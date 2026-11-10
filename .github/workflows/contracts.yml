@@ -1,0 +1,113 @@
+name: Contracts
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: contracts-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # Opt out of the install-time analytics ping in @pact-foundation/pact.
+  SCARF_ANALYTICS: 'false'
+  GIT_COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
+  GIT_BRANCH: ${{ github.head_ref || github.ref_name }}
+
+jobs:
+  quality:
+    name: Lint, typecheck, unit tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm run format:check
+      - run: npm run test:unit
+
+  consumer:
+    name: Consumer tests (generate pacts)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - run: npm run test:consumer
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pacts
+          path: pacts/*.json
+          if-no-files-found: error
+          retention-days: 7
+
+  provider:
+    name: Provider verification
+    needs: consumer
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - uses: actions/download-artifact@v4
+        with:
+          name: pacts
+          path: pacts
+      - run: npm run test:provider
+      # Guards the guard: the scripted regression must still be caught by the contracts.
+      - name: Breaking-change demo (must fail verification)
+        run: npm run demo:break
+
+  broker:
+    name: Pact Broker (publish, verify, can-i-deploy)
+    needs: [quality, provider]
+    if: vars.PACT_BROKER_BASE_URL != ''
+    runs-on: ubuntu-latest
+    env:
+      PACT_BROKER_BASE_URL: ${{ vars.PACT_BROKER_BASE_URL }}
+      PACT_BROKER_TOKEN: ${{ secrets.PACT_BROKER_TOKEN }}
+      PACT_BROKER_USERNAME: ${{ secrets.PACT_BROKER_USERNAME }}
+      PACT_BROKER_PASSWORD: ${{ secrets.PACT_BROKER_PASSWORD }}
+      DEPLOY_ENVIRONMENT: ${{ vars.PACT_DEPLOY_ENVIRONMENT || 'production' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - uses: actions/download-artifact@v4
+        with:
+          name: pacts
+          path: pacts
+      - name: Publish consumer pacts
+        run: npm run pact:publish
+      - name: Verify provider against the broker and publish results
+        run: npm run test:provider
+        env:
+          PACT_PUBLISH_VERIFICATION_RESULTS: 'true'
+      # Provider first: a consumer can only deploy once a verified provider version is recorded
+      # in the environment. On a fresh broker the consumer checks pass after the first main run.
+      - name: can-i-deploy and record deployment
+        run: |
+          for app in order-service web-frontend mobile-app; do
+            PACTICIPANT="$app" npm run pact:can-i-deploy
+            if [ "$GITHUB_REF" = "refs/heads/main" ]; then
+              PACTICIPANT="$app" npm run pact:record-deployment
+            fi
+          done

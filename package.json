@@ -1,0 +1,53 @@
+{
+  "name": "pact-contract-testing-demo",
+  "version": "1.0.0",
+  "description": "Consumer-driven contract testing with Pact: one TypeScript provider, two consumers with different needs, provider states, auth filters, a breaking-change demo and an optional Pact Broker.",
+  "private": true,
+  "license": "MIT",
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "start:provider": "tsx services/order-service/src/server.ts",
+    "test": "npm run test:unit && npm run test:contracts",
+    "test:unit": "vitest run --project unit",
+    "pretest:consumer": "node -e \"require('node:fs').rmSync('pacts',{recursive:true,force:true})\"",
+    "test:consumer": "vitest run --project consumer",
+    "test:provider": "vitest run --project provider",
+    "test:contracts": "npm run test:consumer && npm run test:provider",
+    "demo:break": "tsx scripts/demo-break.ts",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "typecheck": "tsc --noEmit",
+    "clean": "node -e \"for (const d of ['pacts','logs','coverage']) require('node:fs').rmSync(d,{recursive:true,force:true})\"",
+    "broker:up": "docker compose -f docker-compose.broker.yml up -d",
+    "broker:down": "docker compose -f docker-compose.broker.yml down -v",
+    "pact:publish": "pact broker publish pacts --consumer-app-version \"$GIT_COMMIT\" --branch \"$GIT_BRANCH\"",
+    "pact:can-i-deploy": "pact broker can-i-deploy --pacticipant \"$PACTICIPANT\" --version \"$GIT_COMMIT\" --to-environment \"$DEPLOY_ENVIRONMENT\"",
+    "pact:record-deployment": "pact broker record-deployment --pacticipant \"$PACTICIPANT\" --version \"$GIT_COMMIT\" --environment \"$DEPLOY_ENVIRONMENT\"",
+    "pact:create-environment": "pact broker create-environment --name \"$DEPLOY_ENVIRONMENT\" --production"
+  },
+  "dependencies": {
+    "axios": "^1.21.1",
+    "express": "^5.3.0",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@pact-foundation/pact": "^17.1.4",
+    "@pact-foundation/pact-cli": "^18.10.9",
+    "@types/express": "^5.0.6",
+    "@types/node": "^22.19.0",
+    "eslint": "^10.14.0",
+    "eslint-config-prettier": "^10.1.8",
+    "globals": "^17.14.0",
+    "prettier": "^3.9.10",
+    "tsx": "^4.23.15",
+    "typescript": "~6.0.3",
+    "typescript-eslint": "^8.72.2",
+    "vitest": "^5.1.0"
+  }
+}

@@ -1,0 +1,5 @@
+node_modules
+coverage
+logs
+pacts
+package-lock.json

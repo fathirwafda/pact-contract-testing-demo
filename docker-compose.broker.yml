@@ -1,0 +1,33 @@
+# Optional local Pact Broker. The main flow (consumer tests -> pacts/ -> provider verification)
+# does not need it. Start with `npm run broker:up`, then open http://localhost:9292.
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: pact
+      POSTGRES_PASSWORD: pact
+      POSTGRES_DB: pact_broker
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U pact -d pact_broker']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    volumes:
+      - pact-broker-db:/var/lib/postgresql/data
+
+  pact-broker:
+    image: pactfoundation/pact-broker:2.143.0-pactbroker2.121.0
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - '9292:9292'
+    environment:
+      PACT_BROKER_DATABASE_URL: postgres://pact:pact@postgres/pact_broker
+      PACT_BROKER_PORT: '9292'
+      PACT_BROKER_LOG_LEVEL: INFO
+      # Local demo only: no authentication. Use a hosted broker or enable basic auth for anything shared.
+      PACT_BROKER_ALLOW_PUBLIC_READ: 'true'
+
+volumes:
+  pact-broker-db:
